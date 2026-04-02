@@ -1,0 +1,91 @@
+:root {
+    --primary-color: #bebebe;
+    --secondary-color: #8b8b8b;
+}
+
+html,
+body {
+background: transparent;
+margin: 0;
+padding: 0;
+font-family: sans-serif;
+}
+
+#overlay-container {
+width: 960px;
+height: 540px;
+}
+
+#overlay {
+    width: 960px;
+    height: 540px;
+    background: none;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    opacity: 0;
+}
+
+a {
+    width: 90px;
+    text-decoration: none;
+    font-weight: bold;
+    color: var(--primary-color);
+    text-decoration: underline;
+    font-size: 16px;
+}
+
+a:hover {
+    color: var(--secondary-color);
+}
+
+#instruction-container {
+    display: none;
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    translate: -50% -50%;
+    color: var(--primary-color);
+    user-select: none;
+    font-size: 1.1em;
+    gap:1em;
+    align-items: center;
+    justify-content: start;
+}
+
+#instruction-container > svg {
+    height: 80px;
+}
+
+#instruction-container > div {
+    width: 550px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 0.5em;
+}
+
+#fail-container {
+    display: none;
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    translate: -50% -50%;
+    color: var(--primary-color);
+    user-select: none;
+    font-size: 1.1em;
+    gap:1em;
+    align-items: center;
+}
+
+#fail-container > svg {
+    height: 80px;
+}
+
+#fail-container > div {
+    width: 550px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 0.5em;
+}

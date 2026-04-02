@@ -1,0 +1,125 @@
+import { CircularBuffer } from "./circular-buffer.js";
+
+const overlayContainer = document.getElementById("overlay-container");
+const instructionContainer = document.getElementById("instruction-container")
+const failContainer = document.getElementById("fail-container")
+
+
+// CPS -> Clicks Per Second
+// PBR -> Playback Rate
+
+// Grace period after video start with no click tracking (seconds)
+const START_GRACE = 3
+
+// Grace period before video end with no click tracking (seconds)      
+const END_GRACE = 3
+
+// CPS for normal PBR (x1.0)
+const UNIT_CPS = 4
+
+// Maximum possible PBR reached at maximum CPS 
+// MAX_CPS must be larger than or equal to sqrt(MAX_PBR) * UNIT_CPS
+const MAX_PBR = 3
+const MAX_CPS = Math.max(12, Math.sqrt(MAX_PBR) * UNIT_CPS)
+
+// CPS when clicks are first tracked 
+// 0 -> Instantly show overlay message and pause video
+// UNIT_CPS -> PBR will start normal
+const INITIAL_CPS = UNIT_CPS
+
+// Buffer size for running average of CPS (larger = slower response time)
+const BUFFER_SIZE = 100
+
+// Can fail ad by not clicking for a period of time (seconds)
+const CAN_FAIL = true
+const FAIL_TIME = 10
+
+
+let buffer = new CircularBuffer(BUFFER_SIZE)
+let clickTimestamps = [];
+let averageCPS = 0
+let animationFrameID;
+let zeroCPSTimestamp = undefined
+
+window.addEventListener('message', (event) => {
+    if (!event.data || !event.data.type) return;
+
+    switch (event.data.type) {
+        case 'adStarted':
+            setTimeout(() => {
+                overlayContainer.addEventListener("click", (e) => {
+                    clickTimestamps.push(Date.now());
+                })
+                buffer.fill(INITIAL_CPS)
+                averageCPS = INITIAL_CPS
+                animationFrameID = requestAnimationFrame(update)
+            }, START_GRACE * 1000);
+            break;
+        case 'adFinished':
+            window.top.postMessage({ type: 'success' }, '*');
+            break;
+        case 'timeupdate':
+            {
+                const { currentTime, duration } = event.data;
+                let timeRemaining = duration - currentTime
+
+                // Reset playback rate and volume for ending grace period
+                if (timeRemaining < END_GRACE) {
+                    cancelAnimationFrame(animationFrameID)
+                    window.top.postMessage({ type: 'setPlaybackRate', value: 1 }, '*');
+                    window.top.postMessage({ type: 'setVolume', value: 1 }, '*');
+                }
+                break;
+            }
+    }
+});
+
+function update(timestamp) {
+    let now = Date.now()
+    clickTimestamps = clickTimestamps.filter(clickTime => now - clickTime < 1000)
+    let cps = clickTimestamps.length
+    averageCPS += (cps - buffer.remove()) / BUFFER_SIZE
+    buffer.add(cps)
+    let pbr = calculatePBR(averageCPS)
+    const normalizedCPS = clamp(averageCPS / UNIT_CPS, 0, 1)
+    window.top.postMessage({ type: 'setPlaybackRate', value: pbr }, '*');
+    window.top.postMessage({ type: 'setVolume', value: normalizedCPS }, '*');
+    overlayContainer.style.background = `rgba(0, 0, 0, ${0.8 - normalizedCPS})`
+    if (normalizedCPS > 0.01) {
+        instructionContainer.style.display = "none"
+        zeroCPSTimestamp = undefined
+    }
+    else {
+        instructionContainer.style.display = "flex"
+        if (CAN_FAIL) {
+            if (!zeroCPSTimestamp) {
+                zeroCPSTimestamp = now
+            }
+            else if (now - zeroCPSTimestamp >= FAIL_TIME * 1000) {
+                instructionContainer.style.display = "none"
+                failContainer.style.display = "flex"
+                cancelAnimationFrame(animationFrameID)
+                setTimeout(() => {
+                    window.top.postMessage({ type: 'fail' }, '*');
+                }, 3000);
+                return;
+            }
+        }
+    }
+    animationFrameID = requestAnimationFrame(update)
+}
+
+//  Uses quatradic equation intersecting the three points (0,0), (UNIT_CPS, 1.0), and (MAX_CPS, MAX_PBR).
+function calculatePBR(cps) {
+    const d = UNIT_CPS * MAX_CPS * (MAX_CPS - UNIT_CPS)
+    const a = (MAX_PBR * UNIT_CPS - MAX_CPS) / d
+    const b = (MAX_CPS * MAX_CPS - MAX_PBR * UNIT_CPS * UNIT_CPS) / d
+    let pbr = a * cps * cps + b * cps
+    pbr = pbr < 0.1 ? 0 : pbr
+    clamp(pbr, 0, MAX_PBR)
+    return pbr
+}
+
+function clamp(value, min, max) {
+    return value < min ? min : value > max ? max : value
+}
